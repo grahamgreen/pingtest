@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"os/signal"
@@ -24,6 +25,15 @@ func check(e error) {
 }
 
 func main() {
+	f, err := os.OpenFile("pingfail.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		fmt.Errorf("error opening file: %v", err)
+	}
+	defer f.Close()
+
+	log.SetOutput(f)
+	log.Println("Starting PingTest")
+
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage:\n %s [options] ip\n\nOptions:\n", os.Args[0])
 		flag.PrintDefaults()
@@ -67,6 +77,7 @@ loop:
 		select {
 		case <-c:
 			fmt.Println("got interrupted")
+			log.Println("Stopping PingTest")
 			break loop
 		case res := <-onRecv:
 			if _, ok := results[res.addr.String()]; ok {
@@ -76,6 +87,7 @@ loop:
 			for host, r := range results {
 				if r == nil {
 					fmt.Printf("%v %s : unreachable\n", time.Now().Format(time.RFC3339), ips[host])
+					log.Printf("%v, %s, %s\n", time.Now().Format(time.RFC3339), ips[host], host)
 				} else {
 					fmt.Printf("%v %s : %v\n", time.Now().Format(time.RFC3339), ips[host], r.rtt)
 				}
