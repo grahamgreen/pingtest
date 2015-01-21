@@ -32,12 +32,16 @@ func main() {
 	router := flag.String("router", "", "the router ip")
 	modem := flag.String("modem", "", "the modem ip")
 	flag.Parse()
-	ips := [3]string{*outside, *router, *modem}
+	//ips := [3]string{*outside, *router, *modem}
+	ips := make(map[string]string)
+	ips[*outside] = "outside"
+	ips[*router] = "router"
+	ips[*modem] = "modem"
 	results := make(map[string]*response)
 
 	pinger := fastping.NewPinger()
 
-	for _, ipaddr := range ips {
+	for ipaddr, _ := range ips {
 		addr, err := net.ResolveIPAddr("ip4:icmp", ipaddr)
 		check(err)
 		results[addr.String()] = nil
@@ -71,9 +75,9 @@ loop:
 		case <-onIdle:
 			for host, r := range results {
 				if r == nil {
-					fmt.Printf("%s : unreachable %v\n", host, time.Now())
+					fmt.Printf("%v %s : unreachable\n", time.Now().Format(time.RFC3339), ips[host])
 				} else {
-					fmt.Printf("%s : %v %v\n", host, r.rtt, time.Now())
+					fmt.Printf("%v %s : %v\n", time.Now().Format(time.RFC3339), ips[host], r.rtt)
 				}
 				results[host] = nil
 			}
