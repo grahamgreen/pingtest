@@ -17,24 +17,29 @@ type response struct {
 	rtt  time.Duration
 }
 
+func check(e error) {
+	if e != nil {
+		panic(e)
+	}
+}
+
 func main() {
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage:\n %s [options] ip\n\nOptions:\n", os.Args[0])
 		flag.PrintDefaults()
 	}
+	outside := flag.String("outside", "", "an external ip")
+	router := flag.String("router", "", "the router ip")
+	modem := flag.String("modem", "", "the modem ip")
 	flag.Parse()
-	var ips = make([]string, len(flag.Args()))
-	copy(ips, flag.Args())
+	ips := [3]string{*outside, *router, *modem}
 	results := make(map[string]*response)
 
 	pinger := fastping.NewPinger()
 
 	for _, ipaddr := range ips {
 		addr, err := net.ResolveIPAddr("ip4:icmp", ipaddr)
-		if err != nil {
-			fmt.Println(err)
-			os.Exit(1)
-		}
+		check(err)
 		results[addr.String()] = nil
 		pinger.AddIPAddr(addr)
 	}
