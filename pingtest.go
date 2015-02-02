@@ -7,10 +7,10 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"sync/atomic"
 	"syscall"
+	"tatsushid/go-fastping"
 	"time"
-
-	"github.com/tatsushid/go-fastping"
 )
 
 type response struct {
@@ -47,6 +47,15 @@ func main() {
 	ips[*outside] = "outside"
 	ips[*router] = "router"
 	ips[*modem] = "modem"
+
+	var outsideFail uint64 = 0
+	var routerFail uint64 = 0
+	var modemFail uint64 = 0
+	fails := make(map[string]*uint64)
+	fails[*outside] = &outsideFail
+	fails[*router] = &routerFail
+	fails[*modem] = &modemFail
+
 	results := make(map[string]*response)
 
 	pinger := fastping.NewPinger()
@@ -78,6 +87,9 @@ loop:
 		case <-c:
 			fmt.Println("got interrupted")
 			log.Println("Stopping PingTest")
+			for ipaddr, failCount := range fails {
+				fmt.Printf("%s : %d\n", ips[ipaddr], *failCount)
+			}
 			break loop
 		case res := <-onRecv:
 			if _, ok := results[res.addr.String()]; ok {
@@ -88,6 +100,7 @@ loop:
 				if r == nil {
 					fmt.Printf("%v %s : unreachable\n", time.Now().Format(time.RFC3339), ips[host])
 					log.Printf("%v, %s, %s\n", time.Now().Format(time.RFC3339), ips[host], host)
+					atomic.AddUint64(fails[host], 1)
 				} else {
 					fmt.Printf("%v %s : %v\n", time.Now().Format(time.RFC3339), ips[host], r.rtt)
 				}
