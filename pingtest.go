@@ -18,6 +18,18 @@ type response struct {
 	rtt  time.Duration
 }
 
+type RunningAvg struct {
+	avg   int64
+	count int64
+}
+
+func (avg RunningAvg) UpdateAvg(val int64) int64 {
+	newAvg = ((avg.avg * avg.count) + val) / (avg.count + 1)
+	avg.avg = newAvg
+	avg.count++
+	return newAvg
+}
+
 func check(e error) {
 	if e != nil {
 		panic(e)
@@ -42,7 +54,7 @@ func main() {
 	router := flag.String("router", "", "the router ip")
 	modem := flag.String("modem", "", "the modem ip")
 	flag.Parse()
-	//ips := [3]string{*outside, *router, *modem}
+
 	ips := make(map[string]string)
 	ips[*outside] = "outside"
 	ips[*router] = "router"
@@ -57,6 +69,22 @@ func main() {
 	fails[*modem] = &modemFail
 
 	results := make(map[string]*response)
+
+	rttChan := make(chan *response)
+
+	go func() {
+		avgs := make(map[string]*RunningAvg)
+		avgs[*outside] = RunningAvg{0, 0}
+		avgs[*router] = 0
+		avgs[*modem] = 0
+		//for {
+		//	res := <-rttChan
+		//	if avg, ok := avgs[res.addr.String()]; ok {
+
+		//avgs[res.addr.String()]
+		//caclulate avg and update value
+		//}
+	}()
 
 	pinger := fastping.NewPinger()
 
@@ -87,13 +115,16 @@ loop:
 		case <-c:
 			fmt.Println("got interrupted")
 			log.Println("Stopping PingTest")
+			log.Println("Fail Count")
 			for ipaddr, failCount := range fails {
 				fmt.Printf("%s : %d\n", ips[ipaddr], *failCount)
+				log.Printf("%s : %d\n", ips[ipaddr], *failCount)
 			}
 			break loop
 		case res := <-onRecv:
 			if _, ok := results[res.addr.String()]; ok {
 				results[res.addr.String()] = res
+				rttChan <- res
 			}
 		case <-onIdle:
 			for host, r := range results {
@@ -103,6 +134,7 @@ loop:
 					atomic.AddUint64(fails[host], 1)
 				} else {
 					fmt.Printf("%v %s : %v\n", time.Now().Format(time.RFC3339), ips[host], r.rtt)
+					//send host and rtt to handle_update
 				}
 				results[host] = nil
 			}
