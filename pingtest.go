@@ -1,13 +1,12 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"log"
 	"net"
 	"os"
 	"os/signal"
-	"sync/atomic"
+	"strings"
 	"syscall"
 	"tatsushid/go-fastping"
 	"time"
@@ -19,15 +18,30 @@ type response struct {
 }
 
 type RunningAvg struct {
-	avg   int64
+	avg   time.Duration
 	count int64
 }
 
-func (avg RunningAvg) UpdateAvg(val int64) int64 {
-	newAvg = ((avg.avg * avg.count) + val) / (avg.count + 1)
-	avg.avg = newAvg
+func (avg *RunningAvg) UpdateAvg(val time.Duration) {
+	newAvg := ((avg.avg.Nanoseconds() * avg.count) + val.Nanoseconds()) / (avg.count + 1)
+	avg.avg = time.Duration(newAvg)
 	avg.count++
-	return newAvg
+	fmt.Println(avg.avg)
+}
+
+type Updateable interface {
+	UpdateAvg(val time.Duration)
+}
+
+func UpdateAvg(v Updateable, val time.Duration) {
+	v.UpdateAvg(val)
+}
+
+type host struct {
+	name  string
+	ip    net.IP
+	fails uint64
+	avg   RunningAvg
 }
 
 func check(e error) {
@@ -46,50 +60,40 @@ func main() {
 	log.SetOutput(f)
 	log.Println("Starting PingTest")
 
-	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage:\n %s [options] ip\n\nOptions:\n", os.Args[0])
-		flag.PrintDefaults()
+	hosts := make(map[string]*host)
+	for _, val := range os.Args[1:] {
+		split := strings.Split(val, ":")
+		theHost := host{}
+		if len(split) == 1 {
+			theHost = host{name: split[0], ip: net.ParseIP(split[0])}
+		} else {
+			theHost = host{name: split[0], ip: net.ParseIP(split[1])}
+		}
+		hosts[theHost.ip.String()] = &theHost
 	}
-	outside := flag.String("outside", "", "an external ip")
-	router := flag.String("router", "", "the router ip")
-	modem := flag.String("modem", "", "the modem ip")
-	flag.Parse()
-
-	ips := make(map[string]string)
-	ips[*outside] = "outside"
-	ips[*router] = "router"
-	ips[*modem] = "modem"
-
-	var outsideFail uint64 = 0
-	var routerFail uint64 = 0
-	var modemFail uint64 = 0
-	fails := make(map[string]*uint64)
-	fails[*outside] = &outsideFail
-	fails[*router] = &routerFail
-	fails[*modem] = &modemFail
 
 	results := make(map[string]*response)
 
-	rttChan := make(chan *response)
+	rttChan := make(chan *response, 6)
+	failChan := make(chan *host, 6)
 
 	go func() {
-		avgs := make(map[string]*RunningAvg)
-		avgs[*outside] = RunningAvg{0, 0}
-		avgs[*router] = 0
-		avgs[*modem] = 0
-		//for {
-		//	res := <-rttChan
-		//	if avg, ok := avgs[res.addr.String()]; ok {
-
-		//avgs[res.addr.String()]
-		//caclulate avg and update value
-		//}
+		for {
+			select {
+			case res := <-rttChan:
+				if host, ok := hosts[res.addr.String()]; ok {
+					UpdateAvg(&host.avg, res.rtt)
+				}
+			case host := <-failChan:
+				host.fails++
+			}
+		}
 	}()
 
 	pinger := fastping.NewPinger()
 
-	for ipaddr, _ := range ips {
-		addr, err := net.ResolveIPAddr("ip4:icmp", ipaddr)
+	for _, aHost := range hosts {
+		addr, err := net.ResolveIPAddr("ip4:icmp", aHost.ip.String())
 		check(err)
 		results[addr.String()] = nil
 		pinger.AddIPAddr(addr)
@@ -115,28 +119,32 @@ loop:
 		case <-c:
 			fmt.Println("got interrupted")
 			log.Println("Stopping PingTest")
+			log.Println("RTT AVG")
+			for _, host := range hosts {
+				fmt.Printf("%s : %v\n", host.name, host.avg.avg)
+				log.Printf("%s : %v\n", host.name, host.avg.avg)
+			}
 			log.Println("Fail Count")
-			for ipaddr, failCount := range fails {
-				fmt.Printf("%s : %d\n", ips[ipaddr], *failCount)
-				log.Printf("%s : %d\n", ips[ipaddr], *failCount)
+			for _, host := range hosts {
+				fmt.Printf("%s : %d\n", host.name, host.fails)
+				log.Printf("%s : %d\n", host.name, host.fails)
 			}
 			break loop
 		case res := <-onRecv:
 			if _, ok := results[res.addr.String()]; ok {
 				results[res.addr.String()] = res
-				rttChan <- res
 			}
 		case <-onIdle:
-			for host, r := range results {
+			for hostIP, r := range results {
 				if r == nil {
-					fmt.Printf("%v %s : unreachable\n", time.Now().Format(time.RFC3339), ips[host])
-					log.Printf("%v, %s, %s\n", time.Now().Format(time.RFC3339), ips[host], host)
-					atomic.AddUint64(fails[host], 1)
+					fmt.Printf("%v %s : unreachable\n", time.Now().Format(time.RFC3339), hosts[hostIP].name)
+					log.Printf("%v, %s, %s\n", time.Now().Format(time.RFC3339), hosts[hostIP].name, hostIP)
+					failChan <- hosts[hostIP]
 				} else {
-					fmt.Printf("%v %s : %v\n", time.Now().Format(time.RFC3339), ips[host], r.rtt)
-					//send host and rtt to handle_update
+					fmt.Printf("%v %s : %v\n", time.Now().Format(time.RFC3339), hosts[hostIP].name, r.rtt)
+					rttChan <- r
 				}
-				results[host] = nil
+				results[hostIP] = nil
 			}
 		case <-pinger.Done():
 			if err := pinger.Err(); err != nil {
