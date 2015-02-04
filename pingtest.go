@@ -26,7 +26,6 @@ func (avg *RunningAvg) UpdateAvg(val time.Duration) {
 	newAvg := ((avg.avg.Nanoseconds() * avg.count) + val.Nanoseconds()) / (avg.count + 1)
 	avg.avg = time.Duration(newAvg)
 	avg.count++
-	fmt.Println(avg.avg)
 }
 
 type Updateable interface {
@@ -141,7 +140,7 @@ loop:
 					log.Printf("%v, %s, %s\n", time.Now().Format(time.RFC3339), hosts[hostIP].name, hostIP)
 					failChan <- hosts[hostIP]
 				} else {
-					fmt.Printf("%v %s : %v\n", time.Now().Format(time.RFC3339), hosts[hostIP].name, r.rtt)
+					fmt.Printf("time:%v,name:%v,totalAvg:%v,rtt:%v\n", time.Now().Format(time.RFC3339), hosts[hostIP].name, hosts[hostIP].avg.avg, r.rtt)
 					rttChan <- r
 				}
 				results[hostIP] = nil
