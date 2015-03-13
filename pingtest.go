@@ -12,6 +12,8 @@ import (
 	"time"
 )
 
+//just some text
+
 type response struct {
 	addr *net.IPAddr
 	rtt  time.Duration
