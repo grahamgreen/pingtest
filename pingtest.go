@@ -10,6 +10,9 @@ import (
 	"syscall"
 	"tatsushid/go-fastping"
 	"time"
+
+	"github.com/grahamgreen/goutils"
+	"github.com/segmentio/go-loggly"
 )
 
 //just some text
@@ -45,13 +48,12 @@ type host struct {
 	avg   RunningAvg
 }
 
-func check(e error) {
-	if e != nil {
-		panic(e)
-	}
-}
-
 func main() {
+	logToken := os.Getenv("LOGTOKEN")
+	goutils.NotEmpty(logToken)
+	logs := loggly.New(logToken)
+	logs.FlushInterval = 30 * time.Second
+
 	f, err := os.OpenFile("pingfail.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		fmt.Errorf("error opening file: %v", err)
@@ -84,9 +86,23 @@ func main() {
 			case res := <-rttChan:
 				if host, ok := hosts[res.addr.String()]; ok {
 					UpdateAvg(&host.avg, res.rtt)
+					msg := loggly.Message{
+						"timestamp": time.Now().Format(time.RFC3339),
+						"name":      host.name,
+						"avg":       host.avg,
+						"rtt":       res.rtt,
+					}
+					logs.Info("sucess", msg)
 				}
 			case host := <-failChan:
 				host.fails++
+				msg := loggly.Message{
+					"timestamp": time.Now().Format(time.RFC3339),
+					"name":      host.name,
+					"avg":       host.avg,
+					"failcount": host.fails,
+				}
+				logs.Error("fail", msg)
 			}
 		}
 	}()
@@ -95,7 +111,7 @@ func main() {
 
 	for _, aHost := range hosts {
 		addr, err := net.ResolveIPAddr("ip4:icmp", aHost.ip.String())
-		check(err)
+		goutils.Check(err)
 		results[addr.String()] = nil
 		pinger.AddIPAddr(addr)
 	}
