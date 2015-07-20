@@ -97,7 +97,7 @@ func CleanString(s string) string {
 	return s
 }
 
-func ExampleScrape() {
+func ArrisScrape() {
 	var lineHolder bytes.Buffer
 	var allDS []Downstream
 	var allUS []Upstream
@@ -171,5 +171,5 @@ func ExampleScrape() {
 }
 
 func main() {
-	ExampleScrape()
+	ArrisScrape()
 }
