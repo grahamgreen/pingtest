@@ -4,8 +4,11 @@ import (
 	"bytes"
 	"fmt"
 	"log"
+	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
@@ -21,8 +24,8 @@ const (
 
 type Downstream struct {
 	Name           string
-	DCID           int64
-	Freq           float64
+	DCID           string
+	Freq           string
 	Power          float64
 	SNR            float64
 	Modulation     string
@@ -46,8 +49,17 @@ type Status struct {
 	DateTime time.Time
 }
 
+type Record struct {
+	DS   []Downstream
+	US   []Upstream
+	Stat Status
+}
+
 func BuildRRD() {
-	c := rrd.NewCreator(dbfile, time.Now(), step)
+	now := time.Now()
+	start := now.Add(-20 * time.Second)
+
+	c := rrd.NewCreator(dbfile, start, step)
 	c.DS("1", "GAUGE", heartbeat, "U", "U")
 	c.DS("2", "GAUGE", heartbeat, "U", "U")
 	c.DS("3", "GAUGE", heartbeat, "U", "U")
@@ -67,11 +79,9 @@ func ParseDS(ds []string) Downstream {
 	var theDS Downstream
 	var err error
 	theDS.Name = ds[0]
-	theDS.DCID, err = strconv.ParseInt(strings.TrimSpace(ds[1]), 10, 64)
-	goutils.Check(err)
+	theDS.DCID = strings.TrimSpace(ds[1])
 	freqHolder := strings.Split(ds[2], " ")
-	theDS.Freq, err = strconv.ParseFloat(freqHolder[1], 64)
-	goutils.Check(err)
+	theDS.Freq = freqHolder[1]
 	powerHolder := strings.Split(ds[3], " ")
 	theDS.Power, err = strconv.ParseFloat(powerHolder[1], 64)
 	goutils.Check(err)
@@ -121,7 +131,8 @@ func CleanString(s string) string {
 	return s
 }
 
-func ArrisScrape(ds chan []Downstream) {
+func ArrisScrape(rec chan Record) {
+	loc, _ := time.LoadLocation("Local")
 	var lineHolder bytes.Buffer
 	var allDS []Downstream
 	var allUS []Upstream
@@ -167,7 +178,7 @@ func ArrisScrape(ds chan []Downstream) {
 	//this sucks and searches the td's twice
 	doc.Find("td").Each(func(i int, s *goquery.Selection) {
 		if s.Text() == "System Uptime: " {
-			fmt.Println(s.Next().Text())
+			//fmt.Println(s.Next().Text())
 			poo := strings.Split(s.Next().Text(), ":")
 			d, h, m := poo[0], poo[1], poo[2]
 			dInt, err := strconv.ParseInt(CleanString(d), 10, 64)
@@ -184,62 +195,110 @@ func ArrisScrape(ds chan []Downstream) {
 		}
 		if s.Text() == "Time and Date:" {
 			tString := s.Next().Text()
-			t, err := time.Parse("Mon 2006-01-02 15:04:05", tString)
+			t, err := time.ParseInLocation("Mon 2006-01-02 15:04:05", tString, loc)
 			goutils.Check(err)
 			status.DateTime = t
 		}
 	})
-	ds <- allDS
+	rec <- Record{DS: allDS, US: allUS, Stat: status}
+}
+
+func BuildPowerGraph() *rrd.Grapher {
+	g := rrd.NewGrapher()
+	g.SetTitle("Power 1 Min")
+	g.SetSize(750, 300)
+	g.Def("1", dbfile, "1", "AVERAGE")
+	g.Def("2", dbfile, "2", "AVERAGE")
+	g.Def("3", dbfile, "3", "AVERAGE")
+	g.Def("4", dbfile, "4", "AVERAGE")
+	g.Def("5", dbfile, "5", "AVERAGE")
+	g.Def("6", dbfile, "6", "AVERAGE")
+	g.Def("7", dbfile, "7", "AVERAGE")
+	g.Def("8", dbfile, "8", "AVERAGE")
+	g.Line(2, "1", "ff0000", "597")
+	g.Line(2, "2", "00ff00", "555")
+	g.Line(2, "3", "0000ff", "561")
+	g.Line(2, "4", "E16E00", "567")
+	g.Line(2, "5", "A0A0A3", "573")
+	g.Line(2, "6", "5C654E", "579")
+	g.Line(2, "7", "85C9FF", "585")
+	g.Line(2, "8", "7FB37C", "591")
+
+	return g
 }
 
 func main() {
-	BuildRRD()
-	dsChan := make(chan []Downstream, 2)
+	//BuildRRD()
+	recordChan := make(chan Record, 8)
 	//usChan := make(chan *Upstream, 5)
+	ticker5 := time.NewTicker(5 * time.Second)
+	ticker60 := time.NewTicker(60 * time.Second)
+	ticker600 := time.NewTicker(600 * time.Second)
 	go func() {
 		for {
 			select {
-			case ds := <-dsChan:
-				fmt.Println(ds)
-				u := rrd.NewUpdater(dbfile)
-				err := u.Update(time.Now(), ds[0].Power, ds[1].Power, ds[2].Power, ds[3].Power, ds[4].Power, ds[5].Power, ds[6].Power, ds[7].Power)
+			case <-ticker5.C:
+				g := BuildPowerGraph()
+				now := time.Now()
+				i, err := g.SaveGraph("/tmp/power_1min.png", now.Add(-60*time.Second), now)
+				fmt.Printf("%+v\n", i)
 				goutils.Check(err)
-
+			case <-ticker60.C:
+				g := BuildPowerGraph()
+				now := time.Now()
+				g.SetTitle("Power 5 Min")
+				i, err := g.SaveGraph("/tmp/power_5min.png", now.Add(-300*time.Second), now)
+				fmt.Printf("%+v\n", i)
+				goutils.Check(err)
+				g.SetTitle("Power 15 Min")
+				i, err = g.SaveGraph("/tmp/power_15min.png", now.Add(-900*time.Second), now)
+				fmt.Printf("%+v\n", i)
+				goutils.Check(err)
+			case <-ticker600.C:
+				g := BuildPowerGraph()
+				now := time.Now()
+				g.SetTitle("Power 1 Hour")
+				i, err := g.SaveGraph("/tmp/power_60min.png", now.Add(-3600*time.Second), now)
+				fmt.Printf("%+v\n", i)
+				goutils.Check(err)
+				g.SetTitle("Power 6 Hours")
+				i, err = g.SaveGraph("/tmp/power_6h.png", now.Add(-21600*time.Second), now)
+				fmt.Printf("%+v\n", i)
+				goutils.Check(err)
+				g.SetTitle("Power 12 Hours")
+				i, err = g.SaveGraph("/tmp/power_12h.png", now.Add(-43200*time.Second), now)
+				fmt.Printf("%+v\n", i)
+				goutils.Check(err)
+			case rec := <-recordChan:
+				//fmt.Println(rec)
+				// just do the update
+				// have the graphs redrawn on a tick
+				u := rrd.NewUpdater(dbfile)
+				err := u.Update(rec.Stat.DateTime, rec.DS[0].Power,
+					rec.DS[1].Power, rec.DS[2].Power,
+					rec.DS[3].Power, rec.DS[4].Power,
+					rec.DS[5].Power, rec.DS[6].Power, rec.DS[7].Power)
+				goutils.Check(err)
 			}
 		}
 	}()
-	for i := 0; i < 3; i++ {
-		ArrisScrape(dsChan)
-
-		time.Sleep(2 * time.Second)
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
+	signal.Notify(c, syscall.SIGTERM)
+loop:
+	for {
+		select {
+		case <-c:
+			fmt.Println("got interrupted")
+			log.Println("Stopping Scrape")
+			ticker5.Stop()
+			ticker60.Stop()
+			ticker600.Stop()
+			break loop
+		default:
+			ArrisScrape(recordChan)
+			time.Sleep(500 * time.Millisecond)
+		}
 	}
-	//	RRDTest()
-	//	u := rrd.NewUpdater("/home/ggreen/test.rrd")
-	//	for i := 0; i < 900; i++ {
-	//		time.Sleep(1 * time.Second)
-	//		err := u.Update(time.Now(), 1.5*float64(i))
-	//		goutils.Check(err)
-	//	}
-	// Graph
-	//g := rrd.NewGrapher()
-	//g.SetTitle("Test")
-	//g.SetSize(800, 300)
-	//g.Def("v1", "/home/ggreen/test.rrd", "power", "AVERAGE")
-	//g.VDef("avg2", "v1,AVERAGE")
-	//g.Line(1, "v1", "ff0000", "var 1")
-
-	//i, err := g.SaveGraph("/home/ggreen/test_rrd1.png", start, end)
-	//fmt.Printf("%+v\n", i)
-	//goutils.Check(err)
-
-	//i, buf, err := g.Graph(start, end)
-	//fmt.Printf("%+v\n", i)
-	//goutils.Check(err)
-	//err = ioutil.WriteFile("/home/ggreen/test_rrd2.png", buf, 0666)
-	//goutils.Check(err)
-	//
-	//c := make(chan os.Signal, 1)
-	//signal.Notify(c, os.Interrupt)
-	//signal.Notify(c, syscall.SIGTERM)
-
+	signal.Stop(c)
 }
