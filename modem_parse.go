@@ -10,6 +10,13 @@ import (
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/grahamgreen/goutils"
+	"github.com/ziutek/rrd"
+)
+
+const (
+	dbfile    = "/tmp/power.rrd"
+	step      = 1
+	heartbeat = 2 * step
 )
 
 type Downstream struct {
@@ -37,6 +44,23 @@ type Upstream struct {
 type Status struct {
 	Uptime   time.Duration
 	DateTime time.Time
+}
+
+func BuildRRD() {
+	c := rrd.NewCreator(dbfile, time.Now(), step)
+	c.DS("1", "GAUGE", heartbeat, "U", "U")
+	c.DS("2", "GAUGE", heartbeat, "U", "U")
+	c.DS("3", "GAUGE", heartbeat, "U", "U")
+	c.DS("4", "GAUGE", heartbeat, "U", "U")
+	c.DS("5", "GAUGE", heartbeat, "U", "U")
+	c.DS("6", "GAUGE", heartbeat, "U", "U")
+	c.DS("7", "GAUGE", heartbeat, "U", "U")
+	c.DS("8", "GAUGE", heartbeat, "U", "U")
+	c.RRA("AVERAGE", 0.5, 1, 300)
+	c.RRA("AVERAGE", 0.5, 10, 90)
+	c.RRA("AVERAGE", 0.5, 60, 60)
+	err := c.Create(true)
+	goutils.Check(err)
 }
 
 func ParseDS(ds []string) Downstream {
@@ -97,7 +121,7 @@ func CleanString(s string) string {
 	return s
 }
 
-func ArrisScrape() {
+func ArrisScrape(ds chan []Downstream) {
 	var lineHolder bytes.Buffer
 	var allDS []Downstream
 	var allUS []Upstream
@@ -118,7 +142,6 @@ func ArrisScrape() {
 					})
 					theSplitLine := strings.Split(lineHolder.String(), ",")
 					allDS = append(allDS, ParseDS(theSplitLine))
-
 					lineHolder.Reset()
 				}
 			})
@@ -139,6 +162,7 @@ func ArrisScrape() {
 			})
 
 		}
+		//send allus down the ds channel
 	})
 	//this sucks and searches the td's twice
 	doc.Find("td").Each(func(i int, s *goquery.Selection) {
@@ -165,11 +189,57 @@ func ArrisScrape() {
 			status.DateTime = t
 		}
 	})
-	fmt.Println(allDS)
-	fmt.Println(allUS)
-	fmt.Println(status)
+	ds <- allDS
 }
 
 func main() {
-	ArrisScrape()
+	BuildRRD()
+	dsChan := make(chan []Downstream, 2)
+	//usChan := make(chan *Upstream, 5)
+	go func() {
+		for {
+			select {
+			case ds := <-dsChan:
+				fmt.Println(ds)
+				u := rrd.NewUpdater(dbfile)
+				err := u.Update(time.Now(), ds[0].Power, ds[1].Power, ds[2].Power, ds[3].Power, ds[4].Power, ds[5].Power, ds[6].Power, ds[7].Power)
+				goutils.Check(err)
+
+			}
+		}
+	}()
+	for i := 0; i < 3; i++ {
+		ArrisScrape(dsChan)
+
+		time.Sleep(2 * time.Second)
+	}
+	//	RRDTest()
+	//	u := rrd.NewUpdater("/home/ggreen/test.rrd")
+	//	for i := 0; i < 900; i++ {
+	//		time.Sleep(1 * time.Second)
+	//		err := u.Update(time.Now(), 1.5*float64(i))
+	//		goutils.Check(err)
+	//	}
+	// Graph
+	//g := rrd.NewGrapher()
+	//g.SetTitle("Test")
+	//g.SetSize(800, 300)
+	//g.Def("v1", "/home/ggreen/test.rrd", "power", "AVERAGE")
+	//g.VDef("avg2", "v1,AVERAGE")
+	//g.Line(1, "v1", "ff0000", "var 1")
+
+	//i, err := g.SaveGraph("/home/ggreen/test_rrd1.png", start, end)
+	//fmt.Printf("%+v\n", i)
+	//goutils.Check(err)
+
+	//i, buf, err := g.Graph(start, end)
+	//fmt.Printf("%+v\n", i)
+	//goutils.Check(err)
+	//err = ioutil.WriteFile("/home/ggreen/test_rrd2.png", buf, 0666)
+	//goutils.Check(err)
+	//
+	//c := make(chan os.Signal, 1)
+	//signal.Notify(c, os.Interrupt)
+	//signal.Notify(c, syscall.SIGTERM)
+
 }
