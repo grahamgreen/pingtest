@@ -23,6 +23,7 @@ const (
 	heartbeat = 2 * step
 )
 
+//TODO set a red line in the graph if there's no value
 type Downstream struct {
 	Name           string
 	DCID           string
@@ -71,7 +72,11 @@ func BuildRRD() {
 	c.DS("8", "GAUGE", heartbeat, "U", "U")
 	c.RRA("AVERAGE", 0.5, 1, 300)
 	c.RRA("AVERAGE", 0.5, 10, 90)
-	c.RRA("AVERAGE", 0.5, 60, 60)
+	c.RRA("AVERAGE", 0.5, 60, 60)    //1h
+	c.RRA("AVERAGE", 0.5, 60, 360)   //6h
+	c.RRA("AVERAGE", 0.5, 60, 720)   //12h
+	c.RRA("AVERAGE", 0.5, 60, 1440)  //24h
+	c.RRA("AVERAGE", 0.5, 60, 10080) //1w
 	//add longer averages
 	err := c.Create(true)
 	goutils.Check(err)
