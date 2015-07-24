@@ -13,11 +13,12 @@ import (
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/grahamgreen/goutils"
+	"github.com/matryer/try"
 	"github.com/ziutek/rrd"
 )
 
 const (
-	dbfile    = "/tmp/power.rrd"
+	dbfile    = "/home/ggreen/power.rrd"
 	step      = 1
 	heartbeat = 2 * step
 )
@@ -71,6 +72,7 @@ func BuildRRD() {
 	c.RRA("AVERAGE", 0.5, 1, 300)
 	c.RRA("AVERAGE", 0.5, 10, 90)
 	c.RRA("AVERAGE", 0.5, 60, 60)
+	//add longer averages
 	err := c.Create(true)
 	goutils.Check(err)
 }
@@ -137,10 +139,16 @@ func ArrisScrape(rec chan Record) {
 	var allDS []Downstream
 	var allUS []Upstream
 	var status Status
-	doc, err := goquery.NewDocument("http://192.168.100.1/cgi-bin/status_cgi")
-	if err != nil {
-		log.Fatal(err)
-	}
+	var doc *goquery.Document
+	err := try.Do(func(attempt int) (bool, error) {
+		var err error
+		doc, err = goquery.NewDocument("http://192.168.100.1/cgi-bin/status_cgi")
+		if err != nil {
+			time.Sleep(2 * time.Second)
+		}
+		return attempt < 5, err
+	})
+	goutils.Check(err)
 
 	doc.Find("h4").Each(func(i int, s *goquery.Selection) {
 		if s.Text() == " Downstream " {
@@ -234,6 +242,7 @@ func main() {
 	ticker5 := time.NewTicker(5 * time.Second)
 	ticker60 := time.NewTicker(60 * time.Second)
 	ticker600 := time.NewTicker(600 * time.Second)
+	ticker3600 := time.NewTicker(3600 * time.Second)
 	go func() {
 		for {
 			select {
@@ -262,13 +271,29 @@ func main() {
 				fmt.Printf("%+v\n", i)
 				goutils.Check(err)
 				g.SetTitle("Power 6 Hours")
-				i, err = g.SaveGraph("/tmp/power_6h.png", now.Add(-21600*time.Second), now)
+				i, err = g.SaveGraph("/tmp/power_6h.png", now.Add(-6*time.Hour), now)
 				fmt.Printf("%+v\n", i)
 				goutils.Check(err)
 				g.SetTitle("Power 12 Hours")
-				i, err = g.SaveGraph("/tmp/power_12h.png", now.Add(-43200*time.Second), now)
+				i, err = g.SaveGraph("/tmp/power_12h.png", now.Add(-12*time.Hour), now)
 				fmt.Printf("%+v\n", i)
 				goutils.Check(err)
+			case <-ticker3600.C:
+				g := BuildPowerGraph()
+				now := time.Now()
+				g.SetTitle("Power 24 Hrs")
+				i, err := g.SaveGraph("/tmp/power_1d.png", now.Add(-24*time.Hour), now)
+				fmt.Printf("%+v\n", i)
+				goutils.Check(err)
+				g.SetTitle("Power 7 Days")
+				i, err = g.SaveGraph("/tmp/power_1w.png", now.Add(-168*time.Hour), now)
+				fmt.Printf("%+v\n", i)
+				goutils.Check(err)
+				g.SetTitle("Power 31 Days")
+				i, err = g.SaveGraph("/tmp/power_1m.png", now.Add(-744*time.Hour), now)
+				fmt.Printf("%+v\n", i)
+				goutils.Check(err)
+
 			case rec := <-recordChan:
 				//fmt.Println(rec)
 				// just do the update
@@ -294,6 +319,7 @@ loop:
 			ticker5.Stop()
 			ticker60.Stop()
 			ticker600.Stop()
+			ticker3600.Stop()
 			break loop
 		default:
 			ArrisScrape(recordChan)
