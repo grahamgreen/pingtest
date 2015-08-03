@@ -263,11 +263,11 @@ func main() {
 				now := time.Now()
 				g.SetTitle("Power 5 Min")
 				i, err := g.SaveGraph("/tmp/power_5min.png", now.Add(-300*time.Second), now)
-				fmt.Printf("%+v\n", i)
+				fmt.Printf("%v %+v\n", time.Now().Format(time.RFC3339), i)
 				goutils.Check(err)
 				g.SetTitle("Power 15 Min")
 				i, err = g.SaveGraph("/tmp/power_15min.png", now.Add(-900*time.Second), now)
-				fmt.Printf("%+v\n", i)
+				fmt.Printf("%v %+v\n", time.Now().Format(time.RFC3339), i)
 				goutils.Check(err)
 			case <-ticker600.C:
 				g := BuildPowerGraph()
