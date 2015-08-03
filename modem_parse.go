@@ -138,7 +138,7 @@ func CleanString(s string) string {
 	return s
 }
 
-func ArrisScrape(rec chan Record) {
+func ArrisScrape(rec chan Record) (int, error) {
 	loc, _ := time.LoadLocation("Local")
 	var lineHolder bytes.Buffer
 	var allDS []Downstream
@@ -154,7 +154,10 @@ func ArrisScrape(rec chan Record) {
 		}
 		return attempt < 5, err
 	})
-	goutils.Check(err)
+	if err != nil {
+		return 1, fmt.Errorf("%v modem's down - retries failed", time.Now().Format(time.RFC3339))
+
+	}
 
 	doc.Find("h4").Each(func(i int, s *goquery.Selection) {
 		if s.Text() == " Downstream " {
@@ -215,6 +218,7 @@ func ArrisScrape(rec chan Record) {
 		}
 	})
 	rec <- Record{DS: allDS, US: allUS, Stat: status}
+	return 0, nil
 }
 
 func BuildPowerGraph() *rrd.Grapher {
@@ -328,8 +332,13 @@ loop:
 			ticker3600.Stop()
 			break loop
 		default:
-			ArrisScrape(recordChan)
-			time.Sleep(500 * time.Millisecond)
+			ret, err := ArrisScrape(recordChan)
+			if err != nil {
+				fmt.Printf("%v %v", ret, err)
+				time.Sleep(1 * time.Second)
+			} else {
+				time.Sleep(500 * time.Millisecond)
+			}
 		}
 	}
 	signal.Stop(c)
