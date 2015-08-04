@@ -24,6 +24,8 @@ const (
 )
 
 //TODO set a red line in the graph if there's no value
+//TODO better error handling
+//TODO split up graphing, parsing
 type Downstream struct {
 	Name           string
 	DCID           string
@@ -149,7 +151,7 @@ func ArrisScrape(rec chan Record) (int, error) {
 		var err error
 		doc, err = goquery.NewDocument("http://192.168.100.1/cgi-bin/status_cgi")
 		if err != nil {
-			fmt.Printf("%v %s", time.Now().Format(time.RFC3339), err)
+			fmt.Printf("%v %s\n", time.Now().Format(time.RFC3339), err)
 			time.Sleep(2 * time.Second)
 		}
 		return attempt < 5, err
@@ -253,6 +255,7 @@ func main() {
 	ticker60 := time.NewTicker(60 * time.Second)
 	ticker600 := time.NewTicker(600 * time.Second)
 	ticker3600 := time.NewTicker(3600 * time.Second)
+	debug := false
 	go func() {
 		for {
 			select {
@@ -260,48 +263,66 @@ func main() {
 				g := BuildPowerGraph()
 				now := time.Now()
 				i, err := g.SaveGraph("/tmp/power_1min.png", now.Add(-60*time.Second), now)
-				fmt.Printf("%v %+v\n", time.Now().Format(time.RFC3339), i)
+				if debug {
+					fmt.Printf("%v %+v\n", time.Now().Format(time.RFC3339), i)
+				}
 				goutils.Check(err)
 			case <-ticker60.C:
 				g := BuildPowerGraph()
 				now := time.Now()
 				g.SetTitle("Power 5 Min")
 				i, err := g.SaveGraph("/tmp/power_5min.png", now.Add(-300*time.Second), now)
-				fmt.Printf("%v %+v\n", time.Now().Format(time.RFC3339), i)
+				if debug {
+					fmt.Printf("%v %+v\n", time.Now().Format(time.RFC3339), i)
+				}
 				goutils.Check(err)
 				g.SetTitle("Power 15 Min")
 				i, err = g.SaveGraph("/tmp/power_15min.png", now.Add(-900*time.Second), now)
-				fmt.Printf("%v %+v\n", time.Now().Format(time.RFC3339), i)
+				if debug {
+					fmt.Printf("%v %+v\n", time.Now().Format(time.RFC3339), i)
+				}
 				goutils.Check(err)
 			case <-ticker600.C:
 				g := BuildPowerGraph()
 				now := time.Now()
 				g.SetTitle("Power 1 Hour")
 				i, err := g.SaveGraph("/tmp/power_60min.png", now.Add(-3600*time.Second), now)
-				fmt.Printf("%v %+v\n", time.Now().Format(time.RFC3339), i)
+				if debug {
+					fmt.Printf("%v %+v\n", time.Now().Format(time.RFC3339), i)
+				}
 				goutils.Check(err)
 				g.SetTitle("Power 6 Hours")
 				i, err = g.SaveGraph("/tmp/power_6h.png", now.Add(-6*time.Hour), now)
-				fmt.Printf("%v %+v\n", time.Now().Format(time.RFC3339), i)
+				if debug {
+					fmt.Printf("%v %+v\n", time.Now().Format(time.RFC3339), i)
+				}
 				goutils.Check(err)
 				g.SetTitle("Power 12 Hours")
 				i, err = g.SaveGraph("/tmp/power_12h.png", now.Add(-12*time.Hour), now)
-				fmt.Printf("%v %+v\n", time.Now().Format(time.RFC3339), i)
+				if debug {
+					fmt.Printf("%v %+v\n", time.Now().Format(time.RFC3339), i)
+				}
 				goutils.Check(err)
 			case <-ticker3600.C:
 				g := BuildPowerGraph()
 				now := time.Now()
 				g.SetTitle("Power 24 Hrs")
 				i, err := g.SaveGraph("/tmp/power_1d.png", now.Add(-24*time.Hour), now)
-				fmt.Printf("%v %+v\n", time.Now().Format(time.RFC3339), i)
+				if debug {
+					fmt.Printf("%v %+v\n", time.Now().Format(time.RFC3339), i)
+				}
 				goutils.Check(err)
 				g.SetTitle("Power 7 Days")
 				i, err = g.SaveGraph("/tmp/power_1w.png", now.Add(-168*time.Hour), now)
-				fmt.Printf("%v %+v\n", time.Now().Format(time.RFC3339), i)
+				if debug {
+					fmt.Printf("%v %+v\n", time.Now().Format(time.RFC3339), i)
+				}
 				goutils.Check(err)
 				g.SetTitle("Power 31 Days")
 				i, err = g.SaveGraph("/tmp/power_1m.png", now.Add(-744*time.Hour), now)
-				fmt.Printf("%v %+v\n", time.Now().Format(time.RFC3339), i)
+				if debug {
+					fmt.Printf("%v %+v\n", time.Now().Format(time.RFC3339), i)
+				}
 				goutils.Check(err)
 
 			case rec := <-recordChan:
