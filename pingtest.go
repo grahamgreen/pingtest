@@ -54,7 +54,7 @@ func main() {
 	logs := loggly.New(logToken)
 	logs.FlushInterval = 30 * time.Second
 
-	f, err := os.OpenFile("pingfail.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	f, err := os.OpenFile("/home/ggreen/tmp/pingtest/pingfail.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		fmt.Errorf("error opening file: %v", err)
 	}
