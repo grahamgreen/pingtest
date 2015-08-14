@@ -29,10 +29,12 @@ type response struct {
 }
 
 type host struct {
-	name    string
-	ip      net.IP
-	fails   uint64
-	rrdFile string
+	name      string
+	ip        net.IP
+	fails     uint64
+	rrdFile   string
+	rttColor  string
+	failColor string
 }
 
 func BuildRRD(dbfile string, overwrite bool) error {
@@ -41,7 +43,7 @@ func BuildRRD(dbfile string, overwrite bool) error {
 
 	c := rrd.NewCreator(dbfile, start, step)
 	c.DS("rtt", "GAUGE", heartbeat, "U", "U")
-	c.DS("fail", "COUNTER", heartbeat, "U", "U")
+	c.DS("fail", "GAUGE", heartbeat, "U", "U")
 	c.RRA("AVERAGE", 0.5, 1, 300)    //5min w/ sec res
 	c.RRA("AVERAGE", 0.5, 10, 90)    //10min w/ sec res
 	c.RRA("AVERAGE", 0.5, 60, 60)    //1h w/ min res
@@ -54,19 +56,27 @@ func BuildRRD(dbfile string, overwrite bool) error {
 	return err
 }
 
-//func BuildGraph(title string) *rrd.Grapher {
-//	g := rrd.NewGrapher()
-//	g.SetTitle(title)
-//	g.SetSize(750, 300)
-//	g.Def("1", dbfile, "1", "AVERAGE")
-//	g.Def("2", dbfile, "2", "AVERAGE")
-//	g.Line(2, "1", "ff0000", "597")
-//	g.Line(2, "2", "00ff00", "555")
-//
-//	return g
-//}
+func BuildGraph(hosts map[string]*host) *rrd.Grapher {
+	g := rrd.NewGrapher()
+	g.SetTitle("Hosts")
+	g.SetSize(750, 300)
+	g.SetSlopeMode()
+	for _, host := range hosts {
+		rttName := fmt.Sprintf("%s_rtt", host.name)
+		failName := fmt.Sprintf("%s_fail", host.name)
+		g.Def(rttName, host.rrdFile, "rtt", "AVERAGE")
+		g.Def(failName, host.rrdFile, "fail", "AVERAGE")
+		g.Line(2, rttName, host.rttColor, rttName)
+		g.Tick(failName, host.failColor)
+		//g.Line(2, failName, host.failColor, failName)
+	}
+
+	return g
+}
 
 func main() {
+	rtt_colors := []string{"00bb00", "009600", "005e00"}
+	fail_colors := []string{"ff0000", "cc0000", "800000"}
 	app := cli.NewApp()
 	app.Version = version
 	app.Name = "PingTest"
@@ -91,7 +101,7 @@ func main() {
 		log.Println("Starting PingTest")
 
 		hosts := make(map[string]*host)
-		for _, val := range context.Args() {
+		for i, val := range context.Args() {
 			split := strings.Split(val, ":")
 			theHost := host{}
 			if len(split) == 1 {
@@ -102,6 +112,8 @@ func main() {
 
 			hosts[theHost.ip.String()] = &theHost
 			theHost.rrdFile = fmt.Sprintf("%s%s.rrd", rrd_dir, theHost.name)
+			theHost.rttColor = rtt_colors[i]
+			theHost.failColor = fail_colors[i]
 			goutils.Check(BuildRRD(theHost.rrdFile, overwrite))
 		}
 
@@ -117,7 +129,8 @@ func main() {
 					if host, ok := hosts[res.addr.String()]; ok {
 						dbfile := fmt.Sprintf("%s%s.rrd", rrd_dir, host.name)
 						u := rrd.NewUpdater(dbfile)
-						err := u.Update(time.Now(), res.rtt.Nanoseconds(), 0)
+						err := u.Update(time.Now(), res.rtt.Seconds()*1e3, 0)
+						fmt.Printf("%s -- %v\n", host.name, res.rtt.Seconds()*1e3)
 						goutils.Check(err)
 					}
 				case host := <-failChan:
@@ -127,7 +140,10 @@ func main() {
 					err := u.Update(time.Now(), 0, 1)
 					goutils.Check(err)
 				case <-ticker5.C:
-					fmt.Println("ticker5")
+					g := BuildGraph(hosts)
+					now := time.Now()
+					_, err := g.SaveGraph("/tmp/host_tests.png", now.Add(-60*time.Second), now)
+					goutils.Check(err)
 				}
 			}
 		}()
