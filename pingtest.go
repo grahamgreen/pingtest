@@ -89,6 +89,10 @@ func main() {
 	}
 	app.Action = func(context *cli.Context) {
 		ticker5 := time.NewTicker(5 * time.Second)
+		ticker60 := time.NewTicker(60 * time.Second)
+		ticker600 := time.NewTicker(600 * time.Second)
+		ticker3600 := time.NewTicker(3600 * time.Second)
+
 		overwrite := context.GlobalBool("overwrite")
 
 		f, err := os.OpenFile("/home/ggreen/tmp/pingtest/pingfail2.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
@@ -141,8 +145,47 @@ func main() {
 					goutils.Check(err)
 				case <-ticker5.C:
 					g := BuildGraph(hosts)
+					g.SetTitle("RTT 1 Min")
 					now := time.Now()
-					_, err := g.SaveGraph("/tmp/host_tests.png", now.Add(-60*time.Second), now)
+					_, err := g.SaveGraph("/tmp/rtt_1min.png", now.Add(-60*time.Second), now)
+					goutils.Check(err)
+				case <-ticker60.C:
+					g := BuildGraph(hosts)
+
+					g.SetTitle("RTT 5 Min")
+					now := time.Now()
+					_, err := g.SaveGraph("/tmp/rtt_5min.png", now.Add(-300*time.Second), now)
+					goutils.Check(err)
+
+					g.SetTitle("RTT 15 Min")
+					_, err = g.SaveGraph("/tmp/rtt_15min.png", now.Add(-900*time.Second), now)
+					goutils.Check(err)
+				case <-ticker600.C:
+					g := BuildGraph(hosts)
+					now := time.Now()
+					_, err := g.SaveGraph("/tmp/rtt_60min.png", now.Add(-3600*time.Second), now)
+					goutils.Check(err)
+
+					g.SetTitle("RTT 6 Hrs")
+					_, err = g.SaveGraph("/tmp/rtt_6h.png", now.Add(-6*time.Hour), now)
+					goutils.Check(err)
+
+					g.SetTitle("RTT 12Hrs")
+					_, err = g.SaveGraph("/tmp/rtt_12h.png", now.Add(-12*time.Hour), now)
+					goutils.Check(err)
+				case <-ticker3600.C:
+					g := BuildGraph(hosts)
+					g.SetTitle("RTT 24 Hrs")
+					now := time.Now()
+					_, err := g.SaveGraph("/tmp/rtt_1d.png", now.Add(-24*time.Hour), now)
+					goutils.Check(err)
+
+					g.SetTitle("RTT 7 Days")
+					_, err = g.SaveGraph("/tmp/rtt_1w.png", now.Add(-168*time.Hour), now)
+					goutils.Check(err)
+
+					g.SetTitle("RTT 31 Days")
+					_, err = g.SaveGraph("/tmp/rtt_1m.png", now.Add(-744*time.Hour), now)
 					goutils.Check(err)
 				}
 			}
