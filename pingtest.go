@@ -67,7 +67,7 @@ func BuildGraph(hosts map[string]*host) *rrd.Grapher {
 		g.Def(rttName, host.rrdFile, "rtt", "AVERAGE")
 		g.Def(failName, host.rrdFile, "fail", "AVERAGE")
 		g.Line(2, rttName, host.rttColor, rttName)
-		g.Tick(failName, host.failColor)
+		g.Tick(failName, host.failColor, "1.0")
 		//g.Line(2, failName, host.failColor, failName)
 	}
 
@@ -162,6 +162,7 @@ func main() {
 					goutils.Check(err)
 				case <-ticker600.C:
 					g := BuildGraph(hosts)
+					g.SetTitle("RTT 1 Hr")
 					now := time.Now()
 					_, err := g.SaveGraph("/tmp/rtt_60min.png", now.Add(-3600*time.Second), now)
 					goutils.Check(err)

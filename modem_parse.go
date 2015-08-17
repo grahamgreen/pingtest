@@ -78,8 +78,8 @@ func BuildRRD() {
 	c.RRA("AVERAGE", 0.5, 60, 360)   //6h
 	c.RRA("AVERAGE", 0.5, 60, 720)   //12h
 	c.RRA("AVERAGE", 0.5, 60, 1440)  //24h
-	c.RRA("AVERAGE", 0.5, 60, 10080) //1w
-	//add longer averages
+	c.RRA("AVERAGE", 0.5, 3600, 168) //1w w/ hr res
+	c.RRA("AVERAGE", 0.5, 3600, 744) //1month
 	err := c.Create(true)
 	goutils.Check(err)
 }
@@ -248,7 +248,7 @@ func BuildPowerGraph() *rrd.Grapher {
 }
 
 func main() {
-	//BuildRRD()
+	BuildRRD()
 	recordChan := make(chan Record, 8)
 	//usChan := make(chan *Upstream, 5)
 	ticker5 := time.NewTicker(5 * time.Second)
