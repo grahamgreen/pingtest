@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
+	"github.com/codegangsta/cli"
 	"github.com/grahamgreen/goutils"
 	"github.com/matryer/try"
 	"github.com/ziutek/rrd"
@@ -59,7 +60,7 @@ type Record struct {
 	Stat Status
 }
 
-func BuildRRD() {
+func BuildRRD(overwrite bool) error {
 	now := time.Now()
 	start := now.Add(-20 * time.Second)
 
@@ -80,8 +81,8 @@ func BuildRRD() {
 	c.RRA("AVERAGE", 0.5, 60, 1440)  //24h
 	c.RRA("AVERAGE", 0.5, 3600, 168) //1w w/ hr res
 	c.RRA("AVERAGE", 0.5, 3600, 744) //1month
-	err := c.Create(true)
-	goutils.Check(err)
+	err := c.Create(overwrite)
+	return err
 }
 
 func ParseDS(ds []string) Downstream {
@@ -248,119 +249,135 @@ func BuildPowerGraph() *rrd.Grapher {
 }
 
 func main() {
-	BuildRRD()
-	recordChan := make(chan Record, 8)
-	//usChan := make(chan *Upstream, 5)
-	ticker5 := time.NewTicker(5 * time.Second)
-	ticker60 := time.NewTicker(60 * time.Second)
-	ticker600 := time.NewTicker(600 * time.Second)
-	ticker3600 := time.NewTicker(3600 * time.Second)
-	debug := false
-	go func() {
+	app := cli.NewApp()
+	app.Name = "Modem Parse"
+	app.Usage = "Parse modem stats page and graph results"
+	app.Flags = []cli.Flag{
+		cli.BoolFlag{
+			Name:  "overwrite",
+			Usage: "Overwrite the RRD file(s) if they exists Default: False",
+		},
+	}
+	app.Action = func(context *cli.Context) {
+		overwrite := context.GlobalBool("overwrite")
+		err := BuildRRD(overwrite)
+		if err != nil && overwrite {
+			goutils.Check(err)
+		}
+		recordChan := make(chan Record, 8)
+		//usChan := make(chan *Upstream, 5)
+		ticker5 := time.NewTicker(5 * time.Second)
+		ticker60 := time.NewTicker(60 * time.Second)
+		ticker600 := time.NewTicker(600 * time.Second)
+		ticker3600 := time.NewTicker(3600 * time.Second)
+		debug := false
+		go func() {
+			for {
+				select {
+				case <-ticker5.C:
+					g := BuildPowerGraph()
+					now := time.Now()
+					i, err := g.SaveGraph("/tmp/power_1min.png", now.Add(-60*time.Second), now)
+					if debug {
+						fmt.Printf("%v %+v\n", time.Now().Format(time.RFC3339), i)
+					}
+					goutils.Check(err)
+				case <-ticker60.C:
+					g := BuildPowerGraph()
+					now := time.Now()
+					g.SetTitle("Power 5 Min")
+					i, err := g.SaveGraph("/tmp/power_5min.png", now.Add(-300*time.Second), now)
+					if debug {
+						fmt.Printf("%v %+v\n", time.Now().Format(time.RFC3339), i)
+					}
+					goutils.Check(err)
+					g.SetTitle("Power 15 Min")
+					i, err = g.SaveGraph("/tmp/power_15min.png", now.Add(-900*time.Second), now)
+					if debug {
+						fmt.Printf("%v %+v\n", time.Now().Format(time.RFC3339), i)
+					}
+					goutils.Check(err)
+				case <-ticker600.C:
+					g := BuildPowerGraph()
+					now := time.Now()
+					g.SetTitle("Power 1 Hour")
+					i, err := g.SaveGraph("/tmp/power_60min.png", now.Add(-3600*time.Second), now)
+					if debug {
+						fmt.Printf("%v %+v\n", time.Now().Format(time.RFC3339), i)
+					}
+					goutils.Check(err)
+					g.SetTitle("Power 6 Hours")
+					i, err = g.SaveGraph("/tmp/power_6h.png", now.Add(-6*time.Hour), now)
+					if debug {
+						fmt.Printf("%v %+v\n", time.Now().Format(time.RFC3339), i)
+					}
+					goutils.Check(err)
+					g.SetTitle("Power 12 Hours")
+					i, err = g.SaveGraph("/tmp/power_12h.png", now.Add(-12*time.Hour), now)
+					if debug {
+						fmt.Printf("%v %+v\n", time.Now().Format(time.RFC3339), i)
+					}
+					goutils.Check(err)
+				case <-ticker3600.C:
+					g := BuildPowerGraph()
+					now := time.Now()
+					g.SetTitle("Power 24 Hrs")
+					i, err := g.SaveGraph("/tmp/power_1d.png", now.Add(-24*time.Hour), now)
+					if debug {
+						fmt.Printf("%v %+v\n", time.Now().Format(time.RFC3339), i)
+					}
+					goutils.Check(err)
+					g.SetTitle("Power 7 Days")
+					i, err = g.SaveGraph("/tmp/power_1w.png", now.Add(-168*time.Hour), now)
+					if debug {
+						fmt.Printf("%v %+v\n", time.Now().Format(time.RFC3339), i)
+					}
+					goutils.Check(err)
+					g.SetTitle("Power 31 Days")
+					i, err = g.SaveGraph("/tmp/power_1m.png", now.Add(-744*time.Hour), now)
+					if debug {
+						fmt.Printf("%v %+v\n", time.Now().Format(time.RFC3339), i)
+					}
+					goutils.Check(err)
+
+				case rec := <-recordChan:
+					//fmt.Println(rec)
+					// just do the update
+					// have the graphs redrawn on a tick
+					u := rrd.NewUpdater(dbfile)
+					err := u.Update(rec.Stat.DateTime, rec.DS[0].Power,
+						rec.DS[1].Power, rec.DS[2].Power,
+						rec.DS[3].Power, rec.DS[4].Power,
+						rec.DS[5].Power, rec.DS[6].Power, rec.DS[7].Power)
+					goutils.Check(err)
+				}
+			}
+		}()
+		c := make(chan os.Signal, 1)
+		signal.Notify(c, os.Interrupt)
+		signal.Notify(c, syscall.SIGTERM)
+	loop:
 		for {
 			select {
-			case <-ticker5.C:
-				g := BuildPowerGraph()
-				now := time.Now()
-				i, err := g.SaveGraph("/tmp/power_1min.png", now.Add(-60*time.Second), now)
-				if debug {
-					fmt.Printf("%v %+v\n", time.Now().Format(time.RFC3339), i)
+			case <-c:
+				fmt.Println("got interrupted")
+				log.Println("Stopping Scrape")
+				ticker5.Stop()
+				ticker60.Stop()
+				ticker600.Stop()
+				ticker3600.Stop()
+				break loop
+			default:
+				ret, err := ArrisScrape(recordChan)
+				if err != nil {
+					fmt.Printf("%v %v", ret, err)
+					time.Sleep(1 * time.Second)
+				} else {
+					time.Sleep(500 * time.Millisecond)
 				}
-				goutils.Check(err)
-			case <-ticker60.C:
-				g := BuildPowerGraph()
-				now := time.Now()
-				g.SetTitle("Power 5 Min")
-				i, err := g.SaveGraph("/tmp/power_5min.png", now.Add(-300*time.Second), now)
-				if debug {
-					fmt.Printf("%v %+v\n", time.Now().Format(time.RFC3339), i)
-				}
-				goutils.Check(err)
-				g.SetTitle("Power 15 Min")
-				i, err = g.SaveGraph("/tmp/power_15min.png", now.Add(-900*time.Second), now)
-				if debug {
-					fmt.Printf("%v %+v\n", time.Now().Format(time.RFC3339), i)
-				}
-				goutils.Check(err)
-			case <-ticker600.C:
-				g := BuildPowerGraph()
-				now := time.Now()
-				g.SetTitle("Power 1 Hour")
-				i, err := g.SaveGraph("/tmp/power_60min.png", now.Add(-3600*time.Second), now)
-				if debug {
-					fmt.Printf("%v %+v\n", time.Now().Format(time.RFC3339), i)
-				}
-				goutils.Check(err)
-				g.SetTitle("Power 6 Hours")
-				i, err = g.SaveGraph("/tmp/power_6h.png", now.Add(-6*time.Hour), now)
-				if debug {
-					fmt.Printf("%v %+v\n", time.Now().Format(time.RFC3339), i)
-				}
-				goutils.Check(err)
-				g.SetTitle("Power 12 Hours")
-				i, err = g.SaveGraph("/tmp/power_12h.png", now.Add(-12*time.Hour), now)
-				if debug {
-					fmt.Printf("%v %+v\n", time.Now().Format(time.RFC3339), i)
-				}
-				goutils.Check(err)
-			case <-ticker3600.C:
-				g := BuildPowerGraph()
-				now := time.Now()
-				g.SetTitle("Power 24 Hrs")
-				i, err := g.SaveGraph("/tmp/power_1d.png", now.Add(-24*time.Hour), now)
-				if debug {
-					fmt.Printf("%v %+v\n", time.Now().Format(time.RFC3339), i)
-				}
-				goutils.Check(err)
-				g.SetTitle("Power 7 Days")
-				i, err = g.SaveGraph("/tmp/power_1w.png", now.Add(-168*time.Hour), now)
-				if debug {
-					fmt.Printf("%v %+v\n", time.Now().Format(time.RFC3339), i)
-				}
-				goutils.Check(err)
-				g.SetTitle("Power 31 Days")
-				i, err = g.SaveGraph("/tmp/power_1m.png", now.Add(-744*time.Hour), now)
-				if debug {
-					fmt.Printf("%v %+v\n", time.Now().Format(time.RFC3339), i)
-				}
-				goutils.Check(err)
-
-			case rec := <-recordChan:
-				//fmt.Println(rec)
-				// just do the update
-				// have the graphs redrawn on a tick
-				u := rrd.NewUpdater(dbfile)
-				err := u.Update(rec.Stat.DateTime, rec.DS[0].Power,
-					rec.DS[1].Power, rec.DS[2].Power,
-					rec.DS[3].Power, rec.DS[4].Power,
-					rec.DS[5].Power, rec.DS[6].Power, rec.DS[7].Power)
-				goutils.Check(err)
 			}
 		}
-	}()
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt)
-	signal.Notify(c, syscall.SIGTERM)
-loop:
-	for {
-		select {
-		case <-c:
-			fmt.Println("got interrupted")
-			log.Println("Stopping Scrape")
-			ticker5.Stop()
-			ticker60.Stop()
-			ticker600.Stop()
-			ticker3600.Stop()
-			break loop
-		default:
-			ret, err := ArrisScrape(recordChan)
-			if err != nil {
-				fmt.Printf("%v %v", ret, err)
-				time.Sleep(1 * time.Second)
-			} else {
-				time.Sleep(500 * time.Millisecond)
-			}
-		}
+		signal.Stop(c)
 	}
-	signal.Stop(c)
+	app.Run(os.Args)
 }

@@ -118,7 +118,10 @@ func main() {
 			theHost.rrdFile = fmt.Sprintf("%s%s.rrd", rrd_dir, theHost.name)
 			theHost.rttColor = rtt_colors[i]
 			theHost.failColor = fail_colors[i]
-			goutils.Check(BuildRRD(theHost.rrdFile, overwrite))
+			err := BuildRRD(theHost.rrdFile, overwrite)
+			if err != nil && overwrite {
+				goutils.Check(err)
+			}
 		}
 
 		results := make(map[string]*response)
