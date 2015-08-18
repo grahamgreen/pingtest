@@ -50,8 +50,8 @@ func BuildRRD(dbfile string, overwrite bool) error {
 	c.RRA("AVERAGE", 0.5, 60, 360)   //6h
 	c.RRA("AVERAGE", 0.5, 60, 720)   //12h
 	c.RRA("AVERAGE", 0.5, 60, 1440)  //24h
-	c.RRA("AVERAGE", 0.5, 3600, 168) //1w w/ hour res
-	c.RRA("AVERAGE", 0.5, 3600, 744) //1month
+	c.RRA("AVERAGE", 0.5, 60, 10080) //1w
+	c.RRA("AVERAGE", 0.5, 60, 44640) //1month
 	err := c.Create(overwrite)
 	return err
 }
