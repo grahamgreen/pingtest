@@ -62,7 +62,7 @@ type Record struct {
 
 func BuildRRD(overwrite bool) error {
 	now := time.Now()
-	start := now.Add(-20 * time.Second)
+	start := now.Add(-5 * time.Second)
 
 	c := rrd.NewCreator(dbfile, start, step)
 	c.DS("1", "GAUGE", heartbeat, "U", "U")
