@@ -44,7 +44,7 @@ func BuildRRD(dbfile string, overwrite bool) error {
 	c.DS("rtt", "GAUGE", heartbeat, "U", "U")
 	c.DS("fail", "GAUGE", heartbeat, "U", "U")
 	c.RRA("AVERAGE", 0.5, 1, 300)    //5min w/ sec res
-	c.RRA("AVERAGE", 0.5, 10, 90)    //10min w/ sec res
+	c.RRA("AVERAGE", 0.5, 10, 90)    //15min w/ 10sec res
 	c.RRA("AVERAGE", 0.5, 60, 60)    //1h w/ min res
 	c.RRA("AVERAGE", 0.5, 60, 360)   //6h
 	c.RRA("AVERAGE", 0.5, 60, 720)   //12h
