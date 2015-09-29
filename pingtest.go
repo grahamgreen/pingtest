@@ -75,8 +75,13 @@ func BuildGraph(hosts map[string]*host) *rrd.Grapher {
 }
 
 func main() {
-	rtt_colors := []string{"00bb00", "009600", "005e00"}
-	fail_colors := []string{"ff0000", "cc0000", "800000"}
+	//TODO this is bad, need to be able to support more hosts
+	//TODO maybe have 10 and then try/catch index out of range
+	//TODO if index > 10 then select a random number between 1 and 10
+	//------
+	//TODO make sure the fail color is always behind the lines
+	rtt_colors := []string{"00bb00", "009600", "005e00", "005e00"}
+	fail_colors := []string{"ff0000", "cc0000", "800000", "ff0000"}
 	app := cli.NewApp()
 	app.Version = version
 	app.Name = "PingTest"
