@@ -29,12 +29,11 @@ type response struct {
 }
 
 type host struct {
-	name      string
-	ip        net.IP
-	fails     uint64
-	rrdFile   string
-	rttColor  string
-	failColor string
+	name    string
+	ip      net.IP
+	fails   uint64
+	rrdFile string
+	color   string
 }
 
 func BuildRRD(dbfile string, overwrite bool) error {
@@ -66,8 +65,8 @@ func BuildGraph(hosts map[string]*host) *rrd.Grapher {
 		failName := fmt.Sprintf("%s_fail", host.name)
 		g.Def(rttName, host.rrdFile, "rtt", "AVERAGE")
 		g.Def(failName, host.rrdFile, "fail", "AVERAGE")
-		g.Line(2, rttName, host.rttColor, rttName)
-		g.Tick(failName, host.failColor, "1.0")
+		g.Line(2, rttName, host.color, rttName)
+		g.Tick(failName, host.color, "1.0")
 		//g.Line(2, failName, host.failColor, failName)
 	}
 
@@ -80,8 +79,8 @@ func main() {
 	//TODO if index > 10 then select a random number between 1 and 10
 	//------
 	//TODO make sure the fail color is always behind the lines
-	rtt_colors := []string{"00bb00", "009600", "005e00", "005e00"}
-	fail_colors := []string{"ff0000", "cc0000", "800000", "ff0000"}
+	//CURRENT red, black, green, blue
+	colors := []string{"ff0000", "000000", "00CC00", "0000FF"}
 	app := cli.NewApp()
 	app.Version = version
 	app.Name = "PingTest"
@@ -121,8 +120,7 @@ func main() {
 
 			hosts[theHost.ip.String()] = &theHost
 			theHost.rrdFile = fmt.Sprintf("%s%s.rrd", rrd_dir, theHost.name)
-			theHost.rttColor = rtt_colors[i]
-			theHost.failColor = fail_colors[i]
+			theHost.color = colors[i]
 			err := BuildRRD(theHost.rrdFile, overwrite)
 			if err != nil && overwrite {
 				goutils.Check(err)
