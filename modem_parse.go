@@ -348,10 +348,12 @@ func main() {
 					//TODO need to wrap this so that i can pass 0-8 power readings
 					// Should be able to handle the situation where there are less than 8 channels
 					// Will need to split the array out and replace nil w/ 0
-					err := u.Update(rec.Stat.DateTime, rec.DS[0].Power,
-						rec.DS[1].Power, rec.DS[2].Power,
-						rec.DS[3].Power, rec.DS[4].Power,
-						rec.DS[5].Power, rec.DS[6].Power, rec.DS[7].Power)
+					power := []interface{}{0, 0, 0, 0, 0, 0, 0, 0, 0}
+					for i := 0; i < len(rec.DS); i++ {
+						power[i+1] = rec.DS[i].Power
+					}
+					power[0] = rec.Stat.DateTime
+					err := u.Update(power...)
 					goutils.Check(err)
 				}
 			}
