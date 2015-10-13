@@ -345,9 +345,6 @@ func main() {
 					// just do the update
 					// have the graphs redrawn on a tick
 					u := rrd.NewUpdater(dbfile)
-					//TODO need to wrap this so that i can pass 0-8 power readings
-					// Should be able to handle the situation where there are less than 8 channels
-					// Will need to split the array out and replace nil w/ 0
 					power := []interface{}{0, 0, 0, 0, 0, 0, 0, 0, 0}
 					for i := 0; i < len(rec.DS); i++ {
 						power[i+1] = rec.DS[i].Power
