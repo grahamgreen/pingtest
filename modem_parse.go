@@ -373,10 +373,8 @@ func main() {
 				ret, err := ArrisScrape(recordChan)
 				if err != nil {
 					fmt.Printf("%v %v", ret, err)
-					time.Sleep(1 * time.Second)
-				} else {
-					time.Sleep(500 * time.Millisecond)
 				}
+				time.Sleep(1 * time.Second)
 			}
 		}
 		signal.Stop(c)
