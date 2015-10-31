@@ -19,9 +19,10 @@ import (
 )
 
 const (
-	dbfile    = "/home/ggreen/power.rrd"
-	step      = 1
-	heartbeat = 2 * step
+	power_dbfile = "/home/ggreen/power.rrd"
+	octet_dbfile = "/home/ggreen/octet.rrd"
+	step         = 1
+	heartbeat    = 2 * step
 )
 
 //TODO set a red line in the graph if there's no value
@@ -64,7 +65,7 @@ func BuildRRD(overwrite bool) error {
 	now := time.Now()
 	start := now.Add(-5 * time.Second)
 
-	c := rrd.NewCreator(dbfile, start, step)
+	c := rrd.NewCreator(power_dbfile, start, step)
 	c.DS("1", "GAUGE", heartbeat, "U", "U")
 	c.DS("2", "GAUGE", heartbeat, "U", "U")
 	c.DS("3", "GAUGE", heartbeat, "U", "U")
@@ -73,6 +74,31 @@ func BuildRRD(overwrite bool) error {
 	c.DS("6", "GAUGE", heartbeat, "U", "U")
 	c.DS("7", "GAUGE", heartbeat, "U", "U")
 	c.DS("8", "GAUGE", heartbeat, "U", "U")
+	c.RRA("AVERAGE", 0.5, 1, 300)
+	c.RRA("AVERAGE", 0.5, 10, 90)
+	c.RRA("AVERAGE", 0.5, 60, 60)    //1h
+	c.RRA("AVERAGE", 0.5, 60, 360)   //6h
+	c.RRA("AVERAGE", 0.5, 60, 720)   //12h
+	c.RRA("AVERAGE", 0.5, 60, 1440)  //24h
+	c.RRA("AVERAGE", 0.5, 3600, 168) //1w w/ hr res
+	c.RRA("AVERAGE", 0.5, 3600, 744) //1month
+	err := c.Create(overwrite)
+	return err
+}
+
+func BuildOctetRRD(overwrite bool) error {
+	now := time.Now()
+	start := now.Add(-5 * time.Second)
+
+	c := rrd.NewCreator(octet_dbfile, start, step)
+	c.DS("1", "COUNTER", heartbeat, "U", "U")
+	c.DS("2", "COUNTER", heartbeat, "U", "U")
+	c.DS("3", "COUNTER", heartbeat, "U", "U")
+	c.DS("4", "COUNTER", heartbeat, "U", "U")
+	c.DS("5", "COUNTER", heartbeat, "U", "U")
+	c.DS("6", "COUNTER", heartbeat, "U", "U")
+	c.DS("7", "COUNTER", heartbeat, "U", "U")
+	c.DS("8", "COUNTER", heartbeat, "U", "U")
 	c.RRA("AVERAGE", 0.5, 1, 300)
 	c.RRA("AVERAGE", 0.5, 10, 90)
 	c.RRA("AVERAGE", 0.5, 60, 60)    //1h
@@ -228,14 +254,14 @@ func BuildPowerGraph() *rrd.Grapher {
 	g := rrd.NewGrapher()
 	g.SetTitle("Power 1 Min")
 	g.SetSize(750, 300)
-	g.Def("1", dbfile, "1", "AVERAGE")
-	g.Def("2", dbfile, "2", "AVERAGE")
-	g.Def("3", dbfile, "3", "AVERAGE")
-	g.Def("4", dbfile, "4", "AVERAGE")
-	g.Def("5", dbfile, "5", "AVERAGE")
-	g.Def("6", dbfile, "6", "AVERAGE")
-	g.Def("7", dbfile, "7", "AVERAGE")
-	g.Def("8", dbfile, "8", "AVERAGE")
+	g.Def("1", power_dbfile, "1", "AVERAGE")
+	g.Def("2", power_dbfile, "2", "AVERAGE")
+	g.Def("3", power_dbfile, "3", "AVERAGE")
+	g.Def("4", power_dbfile, "4", "AVERAGE")
+	g.Def("5", power_dbfile, "5", "AVERAGE")
+	g.Def("6", power_dbfile, "6", "AVERAGE")
+	g.Def("7", power_dbfile, "7", "AVERAGE")
+	g.Def("8", power_dbfile, "8", "AVERAGE")
 	g.Line(2, "1", "ff0000", "597")
 	g.Line(2, "2", "00ff00", "555")
 	g.Line(2, "3", "0000ff", "561")
@@ -246,6 +272,38 @@ func BuildPowerGraph() *rrd.Grapher {
 	g.Line(2, "8", "7FB37C", "591")
 
 	return g
+}
+
+func BuildOctetGraph() *rrd.Grapher {
+	g := rrd.NewGrapher()
+	g.SetTitle("OCTET Count 1 Min")
+	g.SetSize(750, 300)
+	g.Def("1", octet_dbfile, "1", "AVERAGE")
+	g.Def("2", octet_dbfile, "2", "AVERAGE")
+	g.Def("3", octet_dbfile, "3", "AVERAGE")
+	g.Def("4", octet_dbfile, "4", "AVERAGE")
+	g.Def("5", octet_dbfile, "5", "AVERAGE")
+	g.Def("6", octet_dbfile, "6", "AVERAGE")
+	g.Def("7", octet_dbfile, "7", "AVERAGE")
+	g.Def("8", octet_dbfile, "8", "AVERAGE")
+	g.Line(2, "1", "ff0000", "597")
+	g.Line(2, "2", "00ff00", "555")
+	g.Line(2, "3", "0000ff", "561")
+	g.Line(2, "4", "E16E00", "567")
+	g.Line(2, "5", "A0A0A3", "573")
+	g.Line(2, "6", "5C654E", "579")
+	g.Line(2, "7", "85C9FF", "585")
+	g.Line(2, "8", "7FB37C", "591")
+
+	return g
+}
+
+func WriteGraph(g *rrd.Grapher, path string, startTime, endTime time.Time, debug bool) (int, error) {
+	i, err := g.SaveGraph(path, startTime, endTime)
+	if debug {
+		fmt.Printf("%v %+v\n", time.Now().Format(time.RFC3339), i)
+	}
+	return 0, err
 }
 
 func main() {
@@ -264,6 +322,10 @@ func main() {
 		if err != nil && overwrite {
 			goutils.Check(err)
 		}
+		err = BuildOctetRRD(overwrite)
+		if err != nil && overwrite {
+			goutils.Check(err)
+		}
 		recordChan := make(chan Record, 8)
 		//usChan := make(chan *Upstream, 5)
 		ticker5 := time.NewTicker(5 * time.Second)
@@ -277,81 +339,111 @@ func main() {
 				case <-ticker5.C:
 					g := BuildPowerGraph()
 					now := time.Now()
-					i, err := g.SaveGraph("/tmp/power_1min.png", now.Add(-60*time.Second), now)
-					if debug {
-						fmt.Printf("%v %+v\n", time.Now().Format(time.RFC3339), i)
-					}
+					_, err := WriteGraph(g, "/tmp/power_1min.png", now.Add(-60*time.Second), now, debug)
 					goutils.Check(err)
+
+					g = BuildOctetGraph()
+					_, err = WriteGraph(g, "/tmp/octet_1min.png", now.Add(-60*time.Second), now, debug)
+					goutils.Check(err)
+
 				case <-ticker60.C:
+					//POWER
 					g := BuildPowerGraph()
 					now := time.Now()
 					g.SetTitle("Power 5 Min")
-					i, err := g.SaveGraph("/tmp/power_5min.png", now.Add(-300*time.Second), now)
-					if debug {
-						fmt.Printf("%v %+v\n", time.Now().Format(time.RFC3339), i)
-					}
+					_, err := WriteGraph(g, "/tmp/power_5min.png", now.Add(-300*time.Second), now, debug)
 					goutils.Check(err)
+					//############
 					g.SetTitle("Power 15 Min")
-					i, err = g.SaveGraph("/tmp/power_15min.png", now.Add(-900*time.Second), now)
-					if debug {
-						fmt.Printf("%v %+v\n", time.Now().Format(time.RFC3339), i)
-					}
+					_, err = WriteGraph(g, "/tmp/power_15min.png", now.Add(-900*time.Second), now, debug)
 					goutils.Check(err)
+
+					//OCTETS
+					g = BuildOctetGraph()
+					g.SetTitle("OCTET Count 5 Min")
+					_, err = WriteGraph(g, "/tmp/octet_5min.png", now.Add(-300*time.Second), now, debug)
+					goutils.Check(err)
+					//############
+					g.SetTitle("OCTET Count 15 Min")
+					_, err = WriteGraph(g, "/tmp/octet_15min.png", now.Add(-900*time.Second), now, debug)
+					goutils.Check(err)
+
 				case <-ticker600.C:
 					g := BuildPowerGraph()
 					now := time.Now()
 					g.SetTitle("Power 1 Hour")
-					i, err := g.SaveGraph("/tmp/power_60min.png", now.Add(-3600*time.Second), now)
-					if debug {
-						fmt.Printf("%v %+v\n", time.Now().Format(time.RFC3339), i)
-					}
+					_, err := WriteGraph(g, "/tmp/power_60min.png", now.Add(-3600*time.Second), now, debug)
 					goutils.Check(err)
+					//#################
 					g.SetTitle("Power 6 Hours")
-					i, err = g.SaveGraph("/tmp/power_6h.png", now.Add(-6*time.Hour), now)
-					if debug {
-						fmt.Printf("%v %+v\n", time.Now().Format(time.RFC3339), i)
-					}
+					_, err = WriteGraph(g, "/tmp/power_6h.png", now.Add(-6*time.Hour), now, debug)
 					goutils.Check(err)
+					//#################
 					g.SetTitle("Power 12 Hours")
-					i, err = g.SaveGraph("/tmp/power_12h.png", now.Add(-12*time.Hour), now)
-					if debug {
-						fmt.Printf("%v %+v\n", time.Now().Format(time.RFC3339), i)
-					}
+					_, err = WriteGraph(g, "/tmp/power_12h.png", now.Add(-12*time.Hour), now, debug)
 					goutils.Check(err)
+
+					//OCTETS
+					g = BuildOctetGraph()
+					g.SetTitle("OCTET 1 Hour")
+					_, err = WriteGraph(g, "/tmp/octet_60min.png", now.Add(-3600*time.Second), now, debug)
+					goutils.Check(err)
+					//#################
+					g.SetTitle("OCTET 6 Hours")
+					_, err = WriteGraph(g, "/tmp/octet_6h.png", now.Add(-6*time.Hour), now, debug)
+					goutils.Check(err)
+					//#################
+					g.SetTitle("OCTET 12 Hours")
+					_, err = WriteGraph(g, "/tmp/octet_12h.png", now.Add(-12*time.Hour), now, debug)
+					goutils.Check(err)
+
 				case <-ticker3600.C:
 					g := BuildPowerGraph()
 					now := time.Now()
 					g.SetTitle("Power 24 Hrs")
-					i, err := g.SaveGraph("/tmp/power_1d.png", now.Add(-24*time.Hour), now)
-					if debug {
-						fmt.Printf("%v %+v\n", time.Now().Format(time.RFC3339), i)
-					}
+					_, err := WriteGraph(g, "/tmp/power_1d.png", now.Add(-24*time.Hour), now, debug)
 					goutils.Check(err)
+					//#################
 					g.SetTitle("Power 7 Days")
-					i, err = g.SaveGraph("/tmp/power_1w.png", now.Add(-168*time.Hour), now)
-					if debug {
-						fmt.Printf("%v %+v\n", time.Now().Format(time.RFC3339), i)
-					}
+					_, err = WriteGraph(g, "/tmp/power_1w.png", now.Add(-168*time.Hour), now, debug)
 					goutils.Check(err)
+					//#################
 					g.SetTitle("Power 31 Days")
-					i, err = g.SaveGraph("/tmp/power_1m.png", now.Add(-744*time.Hour), now)
-					if debug {
-						fmt.Printf("%v %+v\n", time.Now().Format(time.RFC3339), i)
-					}
+					_, err = WriteGraph(g, "/tmp/power_1m.png", now.Add(-744*time.Hour), now, debug)
+					goutils.Check(err)
+
+					//OCTETS
+					g = BuildOctetGraph()
+					g.SetTitle("OCTET 24 Hrs")
+					_, err = WriteGraph(g, "/tmp/octet_1d.png", now.Add(-24*time.Hour), now, debug)
+					goutils.Check(err)
+					//#################
+					g.SetTitle("OCTET 7 Days")
+					_, err = WriteGraph(g, "/tmp/octet_1w.png", now.Add(-168*time.Hour), now, debug)
+					goutils.Check(err)
+					//#################
+					g.SetTitle("OCTET 31 Days")
+					_, err = WriteGraph(g, "/tmp/octet_1m.png", now.Add(-744*time.Hour), now, debug)
 					goutils.Check(err)
 
 				case rec := <-recordChan:
 					//fmt.Println(rec)
-					// just do the update
-					// have the graphs redrawn on a tick
-					u := rrd.NewUpdater(dbfile)
+					power_u := rrd.NewUpdater(power_dbfile)
+					octet_u := rrd.NewUpdater(octet_dbfile)
 					power := []interface{}{0, 0, 0, 0, 0, 0, 0, 0, 0}
+					octet := []interface{}{0, 0, 0, 0, 0, 0, 0, 0, 0}
 					for i := 0; i < len(rec.DS); i++ {
 						power[i+1] = rec.DS[i].Power
+						octet[i+1] = rec.DS[i].Octets
 					}
 					power[0] = rec.Stat.DateTime
-					err := u.Update(power...)
+					octet[0] = rec.Stat.DateTime
+					err := power_u.Update(power...)
 					goutils.Check(err)
+
+					err = octet_u.Update(octet...)
+					goutils.Check(err)
+
 				}
 			}
 		}()
