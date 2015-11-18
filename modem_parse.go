@@ -301,7 +301,7 @@ func BuildOctetGraph() *rrd.Grapher {
 func WriteGraph(g *rrd.Grapher, path string, startTime, endTime time.Time, debug bool) (int, error) {
 	i, err := g.SaveGraph(path, startTime, endTime)
 	if debug {
-		fmt.Printf("%v %+v\n", time.Now().Format(time.RFC3339), i)
+		fmt.Printf("%v %+v %v\n", time.Now().Format(time.RFC3339), i, path)
 	}
 	return 0, err
 }
@@ -315,9 +315,14 @@ func main() {
 			Name:  "overwrite",
 			Usage: "Overwrite the RRD file(s) if they exists Default: False",
 		},
+		cli.BoolFlag{
+			Name:  "debug",
+			Usage: "Debug output Default: False",
+		},
 	}
 	app.Action = func(context *cli.Context) {
 		overwrite := context.GlobalBool("overwrite")
+		debug := context.GlobalBool("debug")
 		err := BuildRRD(overwrite)
 		if err != nil && overwrite {
 			goutils.Check(err)
@@ -332,7 +337,6 @@ func main() {
 		ticker60 := time.NewTicker(60 * time.Second)
 		ticker600 := time.NewTicker(600 * time.Second)
 		ticker3600 := time.NewTicker(3600 * time.Second)
-		debug := false
 		go func() {
 			for {
 				select {
@@ -439,9 +443,15 @@ func main() {
 					power[0] = rec.Stat.DateTime
 					octet[0] = rec.Stat.DateTime
 					err := power_u.Update(power...)
+					if debug {
+						fmt.Printf("%v %+v\n", time.Now().Format(time.RFC3339), power)
+					}
 					goutils.Check(err)
 
 					err = octet_u.Update(octet...)
+					if debug {
+						fmt.Printf("%v %+v\n", time.Now().Format(time.RFC3339), octet)
+					}
 					goutils.Check(err)
 
 				}
